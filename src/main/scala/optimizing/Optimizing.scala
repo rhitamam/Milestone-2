@@ -51,6 +51,10 @@ object Optimizing extends App {
     val timings = measurements.map(t => t._2)
     val mae = measurements(0)._1
 
+    //
+
+    val pred = predictionKNN(10,train)
+
     // Save answers as JSON
     def printToFile(content: String,
                     location: String = "./answers.json") =
@@ -72,12 +76,12 @@ object Optimizing extends App {
             "num_measurements" -> ujson.Num(conf.num_measurements())
           ),
           "BR.1" -> ujson.Obj(
-            "1.k10u1v1" -> ujson.Num(0.0),
-            "2.k10u1v864" -> ujson.Num(0.0),
-            "3.k10u1v886" -> ujson.Num(0.0),
-            "4.PredUser1Item1" -> ujson.Num(0.0),
-            "5.PredUser327Item2" -> ujson.Num(0.0),
-            "6.Mae" -> ujson.Num(0.0)
+            "1.k10u1v1" -> ujson.Num(simkNN(0,0,10,train)),
+            "2.k10u1v864" -> ujson.Num(simkNN(0,863,10,train)),
+            "3.k10u1v886" -> ujson.Num(simkNN(0,885,10,train)),
+            "4.PredUser1Item1" -> ujson.Num(pred(0,0)),
+            "5.PredUser327Item2" -> ujson.Num(pred(326,1)),
+            "6.Mae" -> ujson.Num(maeCSC(pred,test))
           ),
           "BR.2" ->  ujson.Obj(
             "average (ms)" -> ujson.Num(mean(timings)), // Datatype of answer: Double
