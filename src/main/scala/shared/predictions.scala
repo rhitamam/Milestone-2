@@ -5,6 +5,7 @@ import breeze.numerics._
 import scala.io.Source
 import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.SparkContext
+import org.apache.spark.broadcast.Broadcast
 
 package object predictions
 {
@@ -222,6 +223,55 @@ package object predictions
   }
 
   // Part 4: Parallel k-NN Computations with Replicated Ratings
+
+
+  def parallelizedKNN(ratings : CSCMatrix[Double], k: Int, sc : SparkContext): ((Int,Int) => Double) = {
+    val avg = avgRating(ratings)
+    val userList = users(ratings)
+    val avgMatrix = avgRatingUserMatrix(ratings,userList)
+    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
+    val br = sc.broadcast(preProcessedMatrix)
+    
+    val topk = sc.parallelize(0 to userList.size).map(u=> topk(u,br,k,userList)).collect()
+
+    val builder = new CSCMatrix.Builder[Double](rows= userList.length, cols= userList.length)
+    topk.map((u,(v,s))-=>builder.add(u,v,s))
+    val x = builder.result()
+
+    var r_u : Double = 0.0
+    ((u,i) => {
+    var r_i = kNNRating(u,i,normalizedMatrix,x,userList,ratings)
+    if (userList contains u) {r_u = avgMatrix(u,0)} else avg
+    r_u + r_i * scale(r_u + r_i, r_u)
+    })
+
+
+  }
+
+  def topk(u : Int, br : Broadcast, k : Int, userlist : Set[Int]) : (Int,Seq[(Int,Double)]) = {
+    val r = br.value()
+    val similarity = simUser(k,r,userlist, u)
+    (u,argtop(similarity,k).map(v => (v, similarity(0,v))))
+
+  }
+   def simUser(k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int], u : Int) : CSCMatrix[Double] = {
+    var simMat = preProcessedMatrix * preProcessedMatrix.t
+    val builder = new CSCMatrix.Builder[Double](rows=1, cols=userList.length)
+
+    for (v <- userList) {
+      if (u != v) builder.add(0, v, simMat(u,v))
+    }
+    
+    builder.result()
+  }
+
+  
+  }
+
+
+
+  
 
   // Part 5: Distributed Approximate k-NN
 
