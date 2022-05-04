@@ -89,8 +89,8 @@ object Exact {
             "1.knn_u1v1" -> ujson.Num(0.0),
             "2.knn_u1v864" -> ujson.Num(0.0),
             "3.knn_u1v886" -> ujson.Num(0.0),
-            "4.PredUser1Item1" -> ujson.Num(0.0),
-            "5.PredUser327Item2" -> ujson.Num(0.0),
+            "4.PredUser1Item1" -> ujson.Num(parallelizedKNN(train,10,sc)(0,0)),
+            "5.PredUser327Item2" -> ujson.Num(parallelizedKNN(train,10,sc)(326,1)),
             "6.Mae" -> ujson.Num(0.0)
           ),
           "EK.2" ->  ujson.Obj(
