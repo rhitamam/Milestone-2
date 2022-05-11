@@ -99,7 +99,7 @@ package object predictions
     for ((k,v) <- test.activeIterator) {
       val u = k._1
       val i = k._2
-      s = s + (predictor(u,i) - v).abs
+      s = s + (predictor(u+1,i+1) - v).abs
     }
     s/test.activeSize
   }
@@ -160,18 +160,13 @@ package object predictions
 
   def processedMatrix(normalizedMatrix : CSCMatrix[Double], userList : Seq[Int]) : CSCMatrix[Double] = {
     var sumSquareMatrix = (normalizedMatrix *:* normalizedMatrix) * vectorOnes(normalizedMatrix.cols)
-    for ((k,v) <- sumSquareMatrix.activeIterator) {
-      val row = k._1
-      val col = k._2
-      sumSquareMatrix(row,col) = scala.math.sqrt(v)
-    }
-    var mat = normalizedMatrix.copy
+    val builder = new CSCMatrix.Builder[Double](rows=normalizedMatrix.rows, cols=normalizedMatrix.cols)
     for ((k,v) <- normalizedMatrix.activeIterator) {
       val row = k._1
       val col = k._2
-      mat(row,col) = v/sumSquareMatrix(row,0)
+      builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row,0)))
     }
-    mat
+    builder.result()
   }
 
   def sim(k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int]) : CSCMatrix[Double] = {
@@ -203,7 +198,7 @@ package object predictions
     val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
     val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
     val simMatrix = sim(k,preProcessedMatrix,userList)
-    simMatrix(u,v)
+    simMatrix(u-1,v-1)
   }
 
   def predictionKNN(k : Int, ratings : CSCMatrix[Double]) : ((Int,Int) => Double) = {
@@ -215,8 +210,8 @@ package object predictions
     val simMatrix = sim(k,preProcessedMatrix,userList)
     var r_u : Double = 0.0
     ((u,i) => {
-    var r_i = kNNRating(u,i,normalizedMatrix,simMatrix,userList,ratings)
-    if (userList contains u) {r_u = avgMatrix(u,0)} else avg
+    var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMatrix,userList,ratings)
+    if (userList contains u-1) {r_u = avgMatrix(u-1,0)} else avg
     r_u + r_i * scale(r_u + r_i, r_u)
     })
   }
@@ -230,7 +225,7 @@ package object predictions
     val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
     val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
     val br = sc.broadcast(preProcessedMatrix)
-    val topku = sc.parallelize(0 to userList.size).map(u=> topk(u,br,k,userList)).collect()
+    val topku = sc.parallelize(0 to userList.size-1).map(u=> topk(u,br,k,userList)).collect()
     val builder = new CSCMatrix.Builder[Double](rows= userList.length, cols= userList.length)
     for (x <- topku) {
       for (y <- x._2) {
@@ -240,32 +235,27 @@ package object predictions
     val mat = builder.result()
     var r_u : Double = 0.0
     ((u,i) => {
-    var r_i = kNNRating(u,i,normalizedMatrix,mat,userList,ratings)
-    if (userList contains u) {r_u = avgMatrix(u,0)} else avg
+    var r_i = kNNRating(u-1,i-1,normalizedMatrix,mat,userList,ratings)
+    if (userList contains u-1) {r_u = avgMatrix(u-1,0)} else avg
     r_u + r_i * scale(r_u + r_i, r_u)
     })
   }
 
   def topk(u : Int, br : org.apache.spark.broadcast.Broadcast[CSCMatrix[Double]], k : Int, userlist : Seq[Int]) : (Int,Seq[(Int,Double)]) = {
     val r = br.value
-    val similarity = simUser(k,r,userlist, u)
-    (u,argtopk(similarity,k).map(x => (x, similarity(x))))
+    val sim_u = r * r(u,0 to r.cols-1).t
+    (u,argtopk(sim_u,k+1).filter(_ != u).map(x => (x, sim_u(x))))
   }
 
-  def simUser(k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int], u : Int) : Vector[Double] = {
-    preProcessedMatrix * preProcessedMatrix(u,0 to preProcessedMatrix.cols-1).t
-    /*
-    val builder = new CSCMatrix.Builder[Double](rows=1, cols=userList.length)
-    val vectorU = preProcessedMatrix(u,0 to userList.length-1)
-    for (v <- userList) {
-      if (u != v) builder.add(0, v, vectorU * preProcessedMatrix(0 to userList.length-1,v))
-    }
-    builder.result()*/
+  def simkNNparallelized(u : Int, v : Int, k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int]) : Double = {
+    val sim_u = preProcessedMatrix * preProcessedMatrix(u-1,0 to preProcessedMatrix.cols-1).t
+    if (argtopk(sim_u,k+1).filter(_ != u-1) contains v-1) {
+      sim_u(v-1)
+    } else 0
   }
 
   // Part 5: Distributed Approximate k-NN
 
-  // Part 6: Economics
 
 }
 

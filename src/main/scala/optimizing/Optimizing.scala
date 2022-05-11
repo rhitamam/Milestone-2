@@ -46,7 +46,7 @@ object Optimizing extends App {
     val test = loadSpark(sc, conf.test(), conf.separator(), conf.users(), conf.movies())
 
     val measurements = (1 to conf.num_measurements()).map(x => timingInMs(() => {
-      0.0
+      maeCSC(predictionKNN(10,train),test)
     }))
     val timings = measurements.map(t => t._2)
     val mae = measurements(0)._1
@@ -76,11 +76,11 @@ object Optimizing extends App {
             "num_measurements" -> ujson.Num(conf.num_measurements())
           ),
           "BR.1" -> ujson.Obj(
-            "1.k10u1v1" -> ujson.Num(simkNN(0,0,10,train)),
-            "2.k10u1v864" -> ujson.Num(simkNN(0,863,10,train)),
-            "3.k10u1v886" -> ujson.Num(simkNN(0,885,10,train)),
-            "4.PredUser1Item1" -> ujson.Num(pred(0,0)),
-            "5.PredUser327Item2" -> ujson.Num(pred(326,1)),
+            "1.k10u1v1" -> ujson.Num(simkNN(1,1,10,train)),
+            "2.k10u1v864" -> ujson.Num(simkNN(1,864,10,train)),
+            "3.k10u1v886" -> ujson.Num(simkNN(1,886,10,train)),
+            "4.PredUser1Item1" -> ujson.Num(pred(1,1)),
+            "5.PredUser327Item2" -> ujson.Num(pred(327,2)),
             "6.Mae" -> ujson.Num(maeCSC(pred,test))
           ),
           "BR.2" ->  ujson.Obj(
