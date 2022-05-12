@@ -255,6 +255,57 @@ package object predictions
   }
 
   // Part 5: Distributed Approximate k-NN
+def DistributedKNNSim(ratings : CSCMatrix[Double], k: Int, sc : SparkContext, nb_user : Int, nb_partition : Int, replication : Int): CSCMatrix[Double] = {
+   val avg = avgRating(ratings)
+    val userList = users(ratings)
+    val avgMatrix = avgRatingUserMatrix(ratings,userList)
+    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
+    val partions = partitionUsers(nb_user,nb_partition,replication)
+    val RDDPartition = sc.parallelize(partions)
+    val MatPartitions = RDDPartition.map(p=> sim2(k, createPartMat(p, preProcessedMatrix), p)).groupByKey().sortByKey().take(k)
+
+    val builder = new CSCMatrix.Builder[Double](rows = userList.length, cols = userList.length)
+    MatPartitions.map(listu => listu._2.map(listv=>builder.add(listu._1, listv._1, listv._2) ))
+
+    val simMat = builder.result()
+    simMat
+
+    
+  }
+
+  def DistributedKNNPredratings ( ratings : CSCMatrix[Double], k: Int, sc : SparkContext, nb_user : Int, nb_partition : Int, replication : Int): ((Int,Int) => Double) = {
+    val simMat = DistributedKNNSim(ratings,k,sc,nb_user, nb_partition,replication)
+    var r_u : Double = 0.0
+      ((u,i) => {
+      var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMat,userList,ratings)
+      if (userList contains u-1) {r_u = avgMatrix(u-1,0)} else avg
+      r_u + r_i * scale(r_u + r_i, r_u)
+      })
+
+
+    
+
+
+
+}
+
+def createPartMat(list_user : Set[Int], preProcessedMatrix : CSCMatrix[Double]) ={
+  val builder = new CSCMatrix.Builder[Double](rows = preProcessedMatrix.rows, cols = preProcessedMatrix.cols)
+  list_user.map(u=> (0 to preProcessedMatrix.cols-1).map(i=>builder.add(u,i, preProcessedMatrix(u,i))))
+  
+
+}
+
+def sim2(k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int]) :Seq[(Int,Seq[(Int,Double)])] = {
+    var simMat = preProcessedMatrix * preProcessedMatrix.t
+    val builder = new CSCMatrix.Builder[Double](rows=userList.length, cols=userList.length)
+    userList.map(u => (u,argtopk(simMat(u,0 to simMat.cols - 1).t,k+1).map(v=>(v,simMat(u,v)))))
+
+   
+  }
+
+
 
 
 }

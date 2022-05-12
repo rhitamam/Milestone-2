@@ -100,7 +100,7 @@ object Approximate {
             "replication" -> ujson.Num(conf.replication()) 
           ),
           "AK.1" -> ujson.Obj(
-            "knn_u1v1" -> ujson.Num(0.0),
+            "knn_u1v1" -> ujson.Num(DistributedKNNSim(train,10,sc,conf.users(), 10,2)(1,1)),
             "knn_u1v864" -> ujson.Num(0.0),
             "knn_u1v344" -> ujson.Num(0.0),
             "knn_u1v16" -> ujson.Num(0.0),
