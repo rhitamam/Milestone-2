@@ -67,10 +67,18 @@ object Approximate {
     val measurements = (1 to scala.math.max(1,conf.num_measurements()))
       .map(_ => timingInMs( () => {
       // Use partitionedUsers here
-      0.0
+      val partitions = partitionUsers(conf.users(), conf.partitions(), conf.replication())
+      maeCSC(approximateKNN(train,conf_k,sc,partitions,conf_users,conf_movies),test)
     }))
     val mae = measurements(0)._1
     val timings = measurements.map(_._2)
+
+    //
+    val avg = avgRating(train)
+    val avgMatrix = avgRatingUserMatrix(train,conf_users,conf_movies)
+    val normalizedMatrix = normalizedDevMatrix(train,avgMatrix,conf_users,conf_movies)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,conf_users,conf_movies)
+    val simApproximate = simApprox(preProcessedMatrix,conf_k,sc,partitionedUsers,conf_users,conf_movies)
 
     // Save answers as JSON
     def printToFile(content: String,
@@ -100,12 +108,12 @@ object Approximate {
             "replication" -> ujson.Num(conf.replication()) 
           ),
           "AK.1" -> ujson.Obj(
-            "knn_u1v1" -> ujson.Num(DistributedKNNSim(train,10,sc,conf.users(), 10,2)(1,1)),
-            "knn_u1v864" -> ujson.Num(0.0),
-            "knn_u1v344" -> ujson.Num(0.0),
-            "knn_u1v16" -> ujson.Num(0.0),
-            "knn_u1v334" -> ujson.Num(0.0),
-            "knn_u1v2" -> ujson.Num(0.0)
+            "knn_u1v1" -> ujson.Num(simkNN(1,1,simApproximate)),
+            "knn_u1v864" -> ujson.Num(simkNN(1,864,simApproximate)),
+            "knn_u1v344" -> ujson.Num(simkNN(1,344,simApproximate)),
+            "knn_u1v16" -> ujson.Num(simkNN(1,16,simApproximate)),
+            "knn_u1v334" -> ujson.Num(simkNN(1,334,simApproximate)),
+            "knn_u1v2" -> ujson.Num(simkNN(1,2,simApproximate))
           ),
           "AK.2" -> ujson.Obj(
             "mae" -> ujson.Num(mae) 

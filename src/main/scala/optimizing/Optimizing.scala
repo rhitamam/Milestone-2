@@ -46,14 +46,18 @@ object Optimizing extends App {
     val test = loadSpark(sc, conf.test(), conf.separator(), conf.users(), conf.movies())
 
     val measurements = (1 to conf.num_measurements()).map(x => timingInMs(() => {
-      maeCSC(predictionKNN(10,train),test)
+      maeCSC(predictionKNN(10,train,conf_users,conf_movies),test)
     }))
     val timings = measurements.map(t => t._2)
     val mae = measurements(0)._1
 
     //
-
-    val pred = predictionKNN(10,train)
+    val avg = avgRating(train)
+    val avgMatrix = avgRatingUserMatrix(train,conf_users,conf_movies)
+    val normalizedMatrix = normalizedDevMatrix(train,avgMatrix,conf_users,conf_movies)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,conf_users,conf_movies)
+    val simOptimizing = simOpt(10,preProcessedMatrix,conf_users)
+    val pred = predictionKNN(10,train,conf_users,conf_movies)
 
     // Save answers as JSON
     def printToFile(content: String,
@@ -76,9 +80,9 @@ object Optimizing extends App {
             "num_measurements" -> ujson.Num(conf.num_measurements())
           ),
           "BR.1" -> ujson.Obj(
-            "1.k10u1v1" -> ujson.Num(simkNN(1,1,10,train)),
-            "2.k10u1v864" -> ujson.Num(simkNN(1,864,10,train)),
-            "3.k10u1v886" -> ujson.Num(simkNN(1,886,10,train)),
+            "1.k10u1v1" -> ujson.Num(avg),
+            "2.k10u1v864" -> ujson.Num(simkNN(1,864,simOptimizing)),
+            "3.k10u1v886" -> ujson.Num(simkNN(1,886,simOptimizing)),
             "4.PredUser1Item1" -> ujson.Num(pred(1,1)),
             "5.PredUser327Item2" -> ujson.Num(pred(327,2)),
             "6.Mae" -> ujson.Num(maeCSC(pred,test))

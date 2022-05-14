@@ -56,17 +56,17 @@ object Exact {
     val test = loadSpark(sc, conf.test(), conf.separator(), conf.users(), conf.movies())
 
     val measurements = (1 to scala.math.max(1,conf.num_measurements())).map(_ => timingInMs( () => {
-      0.0
+      val pred = parallelizedKNN(train,10,sc,conf_users,conf_movies)
+      maeCSC(pred,test)
     }))
     val timings = measurements.map(_._2)
 
     //
     val avg = avgRating(train)
-    val userList = users(train)
-    val avgMatrix = avgRatingUserMatrix(train,userList)
-    val normalizedMatrix = normalizedDevMatrix(train,avgMatrix)
-    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
-    val pred = parallelizedKNN(train,10,sc)
+    val avgMatrix = avgRatingUserMatrix(train,conf_users,conf_movies)
+    val normalizedMatrix = normalizedDevMatrix(train,avgMatrix,conf_users,conf_movies)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,conf_users,conf_movies)
+    val pred = parallelizedKNN(train,10,sc,conf_users,conf_movies)
 
     // Save answers as JSON
     def printToFile(content: String,
@@ -94,9 +94,9 @@ object Exact {
             "num_measurements" -> ujson.Num(conf.num_measurements())
           ),
           "EK.1" -> ujson.Obj(
-            "1.knn_u1v1" -> ujson.Num(simkNNparallelized(1,1,10,preProcessedMatrix,userList)),
-            "2.knn_u1v864" -> ujson.Num(simkNNparallelized(1,864,10,preProcessedMatrix,userList)),
-            "3.knn_u1v886" -> ujson.Num(simkNNparallelized(1,886,10,preProcessedMatrix,userList)),
+            "1.knn_u1v1" -> ujson.Num(simkNNparallelized(1,1,10,preProcessedMatrix,conf_movies)),
+            "2.knn_u1v864" -> ujson.Num(simkNNparallelized(1,864,10,preProcessedMatrix,conf_movies)),
+            "3.knn_u1v886" -> ujson.Num(simkNNparallelized(1,886,10,preProcessedMatrix,conf_movies)),
             "4.PredUser1Item1" -> ujson.Num(pred(1,1)),
             "5.PredUser327Item2" -> ujson.Num(pred(327,2)),
             "6.Mae" -> ujson.Num(maeCSC(pred,test))

@@ -104,6 +104,10 @@ package object predictions
     s/test.activeSize
   }
 
+  def simkNN(u : Int, v : Int, simMatrix : CSCMatrix[Double]) : Double = {
+    simMatrix(u-1,v-1)
+  }
+
   // Part 3: Optimizing with Breeze, a Linear Algebra Library
 
   def vectorOnes(n : Int) : CSCMatrix[Double] = {
@@ -118,26 +122,19 @@ package object predictions
     sum(ratings)/ratings.activeSize
   }
 
-  def avgRatingUser(user : Int, ratings : CSCMatrix[Double]) : Double = {
-    val mat = ratings(user, 0 to (ratings.cols - 1)).t
-    sum(mat)/mat.findAll(_ > 0).size
-  }
-
-  def users(ratings : CSCMatrix[Double]) : Seq[Int] = {
-    var users: Seq[Int] = Seq.empty
+  def avgRatingUserMatrix(ratings : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
+    val counts = Array.fill(users)(0)
+    val builder = new CSCMatrix.Builder[Double](rows=users, cols=1)
     for ((k,v) <- ratings.activeIterator) {
       val u = k._1
-      users = users :+ u
+      builder.add(u, 0, v)
+      counts(u) = counts(u) + 1
     }
-    users.distinct
-  }
-
-  def avgRatingUserMatrix(ratings : CSCMatrix[Double], userList : Seq[Int]) : CSCMatrix[Double] = {
-    val builder = new CSCMatrix.Builder[Double](rows=ratings.rows, cols=1)
-    for (k <- userList) {
-      builder.add(k, 0, avgRatingUser(k, ratings))
+    val avgMat = builder.result()
+    for (u <- 0 to users-1){
+      if (counts(u) != 0) {avgMat(u,0) = avgMat(u,0)/counts(u)} else {avgMat(u,0) = -2}
     }
-    builder.result()
+    avgMat
   }
 
   def scale(x : Double, y : Double) : Double = 
@@ -148,8 +145,8 @@ package object predictions
     (r_u_i - r_u)/scale(r_u_i, r_u)
   }
 
-  def normalizedDevMatrix(ratings : CSCMatrix[Double], avgMatrix : CSCMatrix[Double]) : CSCMatrix[Double] = {
-    val builder = new CSCMatrix.Builder[Double](rows=ratings.rows, cols=ratings.cols)
+  def normalizedDevMatrix(ratings : CSCMatrix[Double], avgMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
+    val builder = new CSCMatrix.Builder[Double](rows=users, cols=movies)
     for ((k,v) <- ratings.activeIterator) {
       val u = k._1
       val i = k._2
@@ -158,9 +155,9 @@ package object predictions
     builder.result()
   }
 
-  def processedMatrix(normalizedMatrix : CSCMatrix[Double], userList : Seq[Int]) : CSCMatrix[Double] = {
-    var sumSquareMatrix = (normalizedMatrix *:* normalizedMatrix) * vectorOnes(normalizedMatrix.cols)
-    val builder = new CSCMatrix.Builder[Double](rows=normalizedMatrix.rows, cols=normalizedMatrix.cols)
+  def processedMatrix(normalizedMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
+    var sumSquareMatrix = (normalizedMatrix *:* normalizedMatrix) * vectorOnes(movies)
+    val builder = new CSCMatrix.Builder[Double](rows=users, cols=movies)
     for ((k,v) <- normalizedMatrix.activeIterator) {
       val row = k._1
       val col = k._2
@@ -169,64 +166,68 @@ package object predictions
     builder.result()
   }
 
-  def sim(k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int]) : CSCMatrix[Double] = {
+  def simOpt(k : Int, preProcessedMatrix : CSCMatrix[Double], users : Int) : CSCMatrix[Double] = {
     var simMat = preProcessedMatrix * preProcessedMatrix.t
-    val builder = new CSCMatrix.Builder[Double](rows=userList.length, cols=userList.length)
-    for (u <- userList) {
-      for (v <- argtopk(simMat(u,0 to simMat.cols - 1).t,k+1)) {
+    val builder = new CSCMatrix.Builder[Double](rows=users, cols=users)
+    for (u <- 0 to users-1) {
+      for (v <- argtopk(simMat(u,0 to users-1).t,k+1)) {
         if (u != v) builder.add(u, v, simMat(u,v))
       }
     }
     builder.result()
   }
 
-  def kNNRating(user : Int, item : Int, normalizedMatrix : CSCMatrix[Double], simMatrix : CSCMatrix[Double],userList : Seq[Int], ratings : CSCMatrix[Double]) : Double = {
+  def kNNRating(user : Int, item : Int, normalizedMatrix : CSCMatrix[Double], simMatrix : CSCMatrix[Double],users : Int, ratings : CSCMatrix[Double]) : Double = {
     var num = 0.0
     var denom = 0.0
-    for (v <- userList) {
+    for (v <- 0 to users-1) {
       if (ratings(v,item) != 0) {
         num = num + simMatrix(user,v)*normalizedMatrix(v,item)
         denom = denom + simMatrix(user,v).abs
       }
     }
-    if (denom != 0) num/denom else 0.0
+    if (denom != 0) num/denom else -2
   }
 
-  def simkNN(u : Int, v : Int, k : Int, ratings : CSCMatrix[Double]) : Double = {
-    val userList = users(ratings)
-    val avgMatrix = avgRatingUserMatrix(ratings,userList)
-    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
-    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
-    val simMatrix = sim(k,preProcessedMatrix,userList)
-    simMatrix(u-1,v-1)
-  }
-
-  def predictionKNN(k : Int, ratings : CSCMatrix[Double]) : ((Int,Int) => Double) = {
+  def predictionKNN(k : Int, ratings : CSCMatrix[Double], users : Int, movies : Int) : ((Int,Int) => Double) = {
     val avg = avgRating(ratings)
-    val userList = users(ratings)
-    val avgMatrix = avgRatingUserMatrix(ratings,userList)
-    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
-    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
-    val simMatrix = sim(k,preProcessedMatrix,userList)
+    val avgMatrix = avgRatingUserMatrix(ratings,users,movies)
+    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix,users,movies)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,users,movies)
+    val simMatrix = simOpt(k,preProcessedMatrix,users)
     var r_u : Double = 0.0
     ((u,i) => {
-    var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMatrix,userList,ratings)
-    if (userList contains u-1) {r_u = avgMatrix(u-1,0)} else avg
-    r_u + r_i * scale(r_u + r_i, r_u)
+    var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMatrix,users,ratings)
+    r_u = avgMatrix(u-1,0)
+    if (r_u == -2) {avg} else {
+      if (r_i != -2) {r_u + r_i * scale(r_u + r_i, r_u)} 
+      else {r_u}}
     })
   }
 
   // Part 4: Parallel k-NN Computations with Replicated Ratings
 
-  def parallelizedKNN(ratings : CSCMatrix[Double], k: Int, sc : SparkContext): ((Int,Int) => Double) = {
+  def topk(u : Int, br : org.apache.spark.broadcast.Broadcast[CSCMatrix[Double]], k : Int, movies : Int) : (Int,Seq[(Int,Double)]) = {
+    val r = br.value
+    val sim_u = r * r(u,0 to movies-1).t
+    (u,argtopk(sim_u,k+1).filter(_ != u).map(x => (x, sim_u(x))))
+  }
+
+  def simkNNparallelized(u : Int, v : Int, k : Int, preProcessedMatrix : CSCMatrix[Double], movies : Int) : Double = {
+    val sim_u = preProcessedMatrix * preProcessedMatrix(u-1,0 to movies-1).t
+    if (argtopk(sim_u,k+1).filter(_ != u-1) contains v-1) {
+      sim_u(v-1)
+    } else 0
+  }
+
+  def parallelizedKNN(ratings : CSCMatrix[Double], k: Int, sc : SparkContext, users : Int, movies : Int): ((Int,Int) => Double) = {
     val avg = avgRating(ratings)
-    val userList = users(ratings)
-    val avgMatrix = avgRatingUserMatrix(ratings,userList)
-    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
-    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
+    val avgMatrix = avgRatingUserMatrix(ratings,users,movies)
+    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix,users,movies)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,users,movies)
     val br = sc.broadcast(preProcessedMatrix)
-    val topku = sc.parallelize(0 to userList.size-1).map(u=> topk(u,br,k,userList)).collect()
-    val builder = new CSCMatrix.Builder[Double](rows= userList.length, cols= userList.length)
+    val topku = sc.parallelize(0 to users-1).map(u=> topk(u,br,k,movies)).collect()
+    val builder = new CSCMatrix.Builder[Double](rows= users, cols= users)
     for (x <- topku) {
       for (y <- x._2) {
         builder.add(x._1,y._1,y._2)
@@ -235,78 +236,51 @@ package object predictions
     val mat = builder.result()
     var r_u : Double = 0.0
     ((u,i) => {
-    var r_i = kNNRating(u-1,i-1,normalizedMatrix,mat,userList,ratings)
-    if (userList contains u-1) {r_u = avgMatrix(u-1,0)} else avg
+    var r_i = kNNRating(u-1,i-1,normalizedMatrix,mat,users,ratings)
+    if (u-1 >= 0 && u-1 < users) {r_u = avgMatrix(u-1,0)} else avg
     r_u + r_i * scale(r_u + r_i, r_u)
     })
   }
 
-  def topk(u : Int, br : org.apache.spark.broadcast.Broadcast[CSCMatrix[Double]], k : Int, userlist : Seq[Int]) : (Int,Seq[(Int,Double)]) = {
-    val r = br.value
-    val sim_u = r * r(u,0 to r.cols-1).t
-    (u,argtopk(sim_u,k+1).filter(_ != u).map(x => (x, sim_u(x))))
-  }
-
-  def simkNNparallelized(u : Int, v : Int, k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int]) : Double = {
-    val sim_u = preProcessedMatrix * preProcessedMatrix(u-1,0 to preProcessedMatrix.cols-1).t
-    if (argtopk(sim_u,k+1).filter(_ != u-1) contains v-1) {
-      sim_u(v-1)
-    } else 0
-  }
-
   // Part 5: Distributed Approximate k-NN
-def DistributedKNNSim(ratings : CSCMatrix[Double], k: Int, sc : SparkContext, nb_user : Int, nb_partition : Int, replication : Int): CSCMatrix[Double] = {
-   val avg = avgRating(ratings)
-    val userList = users(ratings)
-    val avgMatrix = avgRatingUserMatrix(ratings,userList)
-    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix)
-    val preProcessedMatrix = processedMatrix(normalizedMatrix,userList)
-    val partions = partitionUsers(nb_user,nb_partition,replication)
-    val RDDPartition = sc.parallelize(partions)
-    val MatPartitions = RDDPartition.map(p=> sim2(k, createPartMat(p, preProcessedMatrix), p)).groupByKey().sortByKey().take(k)
 
-    val builder = new CSCMatrix.Builder[Double](rows = userList.length, cols = userList.length)
-    MatPartitions.map(listu => listu._2.map(listv=>builder.add(listu._1, listv._1, listv._2) ))
+  def createPartMat(list_user : Set[Int], preProcessedMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
+    val builder = new CSCMatrix.Builder[Double](rows = users, cols = movies)
+    list_user.map(u=> (0 to movies-1).map(i=>builder.add(u,i, preProcessedMatrix(u,i))))
+    builder.result()
+  }
 
+  def simPartition(k : Int, preProcessedMatrix : CSCMatrix[Double], list_user : Seq[Int], users : Int) : Seq[(Int,Seq[(Int,Double)])] = {
+      var simMat = preProcessedMatrix * preProcessedMatrix.t
+      list_user.map(u => (u,argtopk(simMat(u,0 to users-1).t,k+1).filter(_ != u).map(v=>(v,simMat(u,v)))))
+  }
+
+  def simApprox(preProcessedMatrix : CSCMatrix[Double], k: Int, sc : SparkContext, partitions : Seq[Set[Int]], users : Int, movies : Int): CSCMatrix[Double] = {
+    val partitionRDD = sc.parallelize(partitions)
+    val simPartitionned = partitionRDD.flatMap(p=> simPartition(k, createPartMat(p, preProcessedMatrix,users,movies), p.toSeq, users)).reduceByKey{case (x,y) => x.union(y).distinct}
+    val builder = new CSCMatrix.Builder[Double](rows = users, cols = users)
+    for (listu <- simPartitionned.collect()) {
+      for (listv <- listu._2.sortBy(x => x._2)(Ordering.Double.reverse).take(k)) {
+        builder.add(listu._1, listv._1, listv._2)
+      }
+    }
     val simMat = builder.result()
     simMat
-
-    
   }
 
-  def DistributedKNNPredratings ( ratings : CSCMatrix[Double], k: Int, sc : SparkContext, nb_user : Int, nb_partition : Int, replication : Int): ((Int,Int) => Double) = {
-    val simMat = DistributedKNNSim(ratings,k,sc,nb_user, nb_partition,replication)
+  def approximateKNN(ratings : CSCMatrix[Double], k: Int, sc : SparkContext, partitions : Seq[Set[Int]], users :Int, movies : Int): ((Int,Int) => Double) = {
+    val avg = avgRating(ratings)
+    val avgMatrix = avgRatingUserMatrix(ratings,users,movies)
+    val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix,users,movies)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,users,movies)
+    val simMat = simApprox(preProcessedMatrix,k,sc,partitions,users,movies)
     var r_u : Double = 0.0
-      ((u,i) => {
-      var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMat,userList,ratings)
-      if (userList contains u-1) {r_u = avgMatrix(u-1,0)} else avg
-      r_u + r_i * scale(r_u + r_i, r_u)
-      })
-
-
-    
-
-
-
-}
-
-def createPartMat(list_user : Set[Int], preProcessedMatrix : CSCMatrix[Double]) ={
-  val builder = new CSCMatrix.Builder[Double](rows = preProcessedMatrix.rows, cols = preProcessedMatrix.cols)
-  list_user.map(u=> (0 to preProcessedMatrix.cols-1).map(i=>builder.add(u,i, preProcessedMatrix(u,i))))
-  
-
-}
-
-def sim2(k : Int, preProcessedMatrix : CSCMatrix[Double], userList : Seq[Int]) :Seq[(Int,Seq[(Int,Double)])] = {
-    var simMat = preProcessedMatrix * preProcessedMatrix.t
-    val builder = new CSCMatrix.Builder[Double](rows=userList.length, cols=userList.length)
-    userList.map(u => (u,argtopk(simMat(u,0 to simMat.cols - 1).t,k+1).map(v=>(v,simMat(u,v)))))
-
-   
+    ((u,i) => {
+    var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMat,users,ratings)
+    if (u-1 >= 0 && u-1 < users) {r_u = avgMatrix(u-1,0)} else avg
+    r_u + r_i * scale(r_u + r_i, r_u)
+    })
   }
-
-
-
 
 }
 
