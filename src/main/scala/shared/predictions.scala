@@ -132,7 +132,7 @@ package object predictions
     }
     val avgMat = builder.result()
     for (u <- 0 to users-1){
-      if (counts(u) != 0) {avgMat(u,0) = avgMat(u,0)/counts(u)} else {avgMat(u,0) = -2}
+      if (counts(u) != 0) {avgMat(u,0) = avgMat(u,0)/counts(u)} else {avgMat(u,0) = 0.0}
     }
     avgMat
   }
@@ -186,7 +186,7 @@ package object predictions
         denom = denom + simMatrix(user,v).abs
       }
     }
-    if (denom != 0) num/denom else -2
+    if (denom != 0) num/denom else 0.0
   }
 
   def predictionKNN(k : Int, ratings : CSCMatrix[Double], users : Int, movies : Int) : ((Int,Int) => Double) = {
@@ -198,10 +198,8 @@ package object predictions
     var r_u : Double = 0.0
     ((u,i) => {
     var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMatrix,users,ratings)
-    r_u = avgMatrix(u-1,0)
-    if (r_u == -2) {avg} else {
-      if (r_i != -2) {r_u + r_i * scale(r_u + r_i, r_u)} 
-      else {r_u}}
+    if (u-1 >= 0 && u-1 < users) {r_u = avgMatrix(u-1,0)} else avg
+    r_u + r_i * scale(r_u + r_i, r_u)
     })
   }
 

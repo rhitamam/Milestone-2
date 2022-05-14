@@ -80,7 +80,7 @@ object Optimizing extends App {
             "num_measurements" -> ujson.Num(conf.num_measurements())
           ),
           "BR.1" -> ujson.Obj(
-            "1.k10u1v1" -> ujson.Num(avg),
+            "1.k10u1v1" -> ujson.Num(simkNN(1,1,simOptimizing)),
             "2.k10u1v864" -> ujson.Num(simkNN(1,864,simOptimizing)),
             "3.k10u1v886" -> ujson.Num(simkNN(1,886,simOptimizing)),
             "4.PredUser1Item1" -> ujson.Num(pred(1,1)),
