@@ -56,7 +56,7 @@ object Exact {
     val test = loadSpark(sc, conf.test(), conf.separator(), conf.users(), conf.movies())
 
     val measurements = (1 to scala.math.max(1,conf.num_measurements())).map(_ => timingInMs( () => {
-      val pred = parallelizedKNN(train,10,sc,conf_users,conf_movies)
+      val pred = parallelizedKNN(train,conf_k,sc,conf_users,conf_movies)
       maeCSC(pred,test)
     }))
     val timings = measurements.map(_._2)
