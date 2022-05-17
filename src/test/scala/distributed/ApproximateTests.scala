@@ -39,25 +39,31 @@ class ApproximateTests extends AnyFunSuite with BeforeAndAfterAll {
       2 
     )
 
+    val avg = avgRating(train2)
+    val avgMatrix = avgRatingUserMatrix(train2,943, 1682)
+    val normalizedMatrix = normalizedDevMatrix(train2,avgMatrix,943, 1682)
+    val preProcessedMatrix = processedMatrix(normalizedMatrix,943, 1682)
+    val simApproximate = simApprox(preProcessedMatrix,10,sc,partitionedUsers,943, 1682)
+
      // Similarity between user 1 and itself
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(simkNN(1,1,simApproximate), 0.0, 0.0001))
  
      // Similarity between user 1 and 864
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(simkNN(1,864,simApproximate), 0.0, 0.0001))
 
      // Similarity between user 1 and 344
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(simkNN(1,344,simApproximate), 0.23659364388510987, 0.0001))
 
      // Similarity between user 1 and 16
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(simkNN(1,16,simApproximate), 0.0, 0.0001))
 
      // Similarity between user 1 and 334
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(simkNN(1,334,simApproximate),  0.19282239907090368, 0.0001))
 
      // Similarity between user 1 and 2
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(simkNN(1,2,simApproximate), 0.0, 0.0001))
 
      // MAE on test
-     assert(within(1.0, 0.0, 0.0001))
+     assert(within(maeCSC(approximateKNN(train2,10,sc,partitionedUsers,943, 1682),test2), 0.8430898379744425, 0.0001))
    } 
 }

@@ -155,13 +155,25 @@ package object predictions
     builder.result()
   }
 
+  def reduction(mat : CSCMatrix[Double],users : Int) : DenseVector[Double] = {
+    var vect = DenseVector.zeros[Double](users)	
+    for ((k,v) <- mat.activeIterator) {
+      val row = k._1
+      val col = k._2
+      vect(row) = vect(row) + mat(row,col)
+    }
+    vect
+  }
+
   def processedMatrix(normalizedMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
     var sumSquareMatrix = (normalizedMatrix *:* normalizedMatrix) * vectorOnes(movies)
+    //var sumSquareMatrix = reduction(normalizedMatrix *:* normalizedMatrix,users)
     val builder = new CSCMatrix.Builder[Double](rows=users, cols=movies)
     for ((k,v) <- normalizedMatrix.activeIterator) {
       val row = k._1
       val col = k._2
       builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row,0)))
+      //builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row)))
     }
     builder.result()
   }
@@ -242,7 +254,8 @@ package object predictions
 
   // Part 5: Distributed Approximate k-NN
 
-  def createPartMat(list_user : Set[Int], preProcessedMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
+  def createPartMat(list_user : Set[Int], br : org.apache.spark.broadcast.Broadcast[CSCMatrix[Double]], users : Int, movies : Int) : CSCMatrix[Double] = {
+    val preProcessedMatrix = br.value
     val builder = new CSCMatrix.Builder[Double](rows = users, cols = movies)
     list_user.map(u=> (0 to movies-1).map(i=>builder.add(u,i, preProcessedMatrix(u,i))))
     builder.result()
@@ -254,10 +267,10 @@ package object predictions
   }
 
   def simApprox(preProcessedMatrix : CSCMatrix[Double], k: Int, sc : SparkContext, partitions : Seq[Set[Int]], users : Int, movies : Int): CSCMatrix[Double] = {
-    val partitionRDD = sc.parallelize(partitions)
-    val simPartitionned = partitionRDD.flatMap(p=> simPartition(k, createPartMat(p, preProcessedMatrix,users,movies), p.toSeq, users)).reduceByKey{case (x,y) => x.union(y).distinct}
+    val br = sc.broadcast(preProcessedMatrix)
+    val partitionRDD = sc.parallelize(partitions).flatMap(p=> simPartition(k, createPartMat(p, br,users,movies), p.toSeq, users)).reduceByKey{case (x,y) => x.union(y).distinct}
     val builder = new CSCMatrix.Builder[Double](rows = users, cols = users)
-    for (listu <- simPartitionned.collect()) {
+    for (listu <- partitionRDD.collect()) {
       for (listv <- listu._2.sortBy(x => x._2)(Ordering.Double.reverse).take(k)) {
         builder.add(listu._1, listv._1, listv._2)
       }
