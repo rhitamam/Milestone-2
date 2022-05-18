@@ -108,7 +108,36 @@ package object predictions
     simMatrix(u-1,v-1)
   }
 
-  // Part 3: Optimizing with Breeze, a Linear Algebra Library
+  def prodMat(mat : CSCMatrix[Double], row : Int, col : Int) : CSCMatrix[Double] = {
+    val builder = new CSCMatrix.Builder[Double](rows=row, cols=row)
+    for (v <- 0 to row-1){ 
+      val column_v = mat * mat(v,0 to col-1).t
+      for (u <- 0 to row-1) {
+        builder.add(u,v,column_v(u))
+      }
+    }
+    builder.result()
+  }
+
+  def prodMat2(mat : CSCMatrix[Double], row : Int, col : Int) : CSCMatrix[Double] = {
+    val builder = new CSCMatrix.Builder[Double](rows=row, cols=row)
+    for (u <- 0 to row -1){
+      for (v <- 0 to row-1){ 
+        builder.add(u,v,mat(u,0 to col-1) * mat(v,0 to col-1).t)
+      }
+    }
+    builder.result()
+  }
+
+  def reduction(mat : CSCMatrix[Double],users : Int) : DenseVector[Double] = {
+    var vect = DenseVector.zeros[Double](users)	
+    for ((k,v) <- mat.activeIterator) {
+      val row = k._1
+      val col = k._2
+      vect(row) = vect(row) + mat(row,col)
+    }
+    vect
+  }
 
   def vectorOnes(n : Int) : CSCMatrix[Double] = {
     val builder = new CSCMatrix.Builder[Double](rows=n, cols=1)
@@ -117,6 +146,8 @@ package object predictions
     }
     builder.result()
   }
+
+  // Part 3: Optimizing with Breeze, a Linear Algebra Library
 
   def avgRating(ratings : CSCMatrix[Double]) : Double = {
     sum(ratings)/ratings.activeSize
@@ -155,31 +186,21 @@ package object predictions
     builder.result()
   }
 
-  def reduction(mat : CSCMatrix[Double],users : Int) : DenseVector[Double] = {
-    var vect = DenseVector.zeros[Double](users)	
-    for ((k,v) <- mat.activeIterator) {
-      val row = k._1
-      val col = k._2
-      vect(row) = vect(row) + mat(row,col)
-    }
-    vect
-  }
-
   def processedMatrix(normalizedMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
-    var sumSquareMatrix = (normalizedMatrix *:* normalizedMatrix) * vectorOnes(movies)
-    //var sumSquareMatrix = reduction(normalizedMatrix *:* normalizedMatrix,users)
+    var sumSquareMatrix = (normalizedMatrix *:* normalizedMatrix) * vectorOnes(movies) //if we use the function vectorOnes
+    //var sumSquareMatrix = reduction(normalizedMatrix *:* normalizedMatrix,users) //if we use the function reduction
     val builder = new CSCMatrix.Builder[Double](rows=users, cols=movies)
     for ((k,v) <- normalizedMatrix.activeIterator) {
       val row = k._1
       val col = k._2
-      builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row,0)))
-      //builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row)))
+      builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row,0))) //if we use the function vectorOnes
+      //builder.add(row,col,v/scala.math.sqrt(sumSquareMatrix(row))) //if we use the function reduction
     }
     builder.result()
   }
 
-  def simOpt(k : Int, preProcessedMatrix : CSCMatrix[Double], users : Int) : CSCMatrix[Double] = {
-    var simMat = preProcessedMatrix * preProcessedMatrix.t
+  def simOpt(k : Int, preProcessedMatrix : CSCMatrix[Double], users : Int, movies : Int) : CSCMatrix[Double] = {
+    var simMat = prodMat(preProcessedMatrix,users,movies)
     val builder = new CSCMatrix.Builder[Double](rows=users, cols=users)
     for (u <- 0 to users-1) {
       for (v <- argtopk(simMat(u,0 to users-1).t,k+1)) {
@@ -206,7 +227,7 @@ package object predictions
     val avgMatrix = avgRatingUserMatrix(ratings,users,movies)
     val normalizedMatrix = normalizedDevMatrix(ratings,avgMatrix,users,movies)
     val preProcessedMatrix = processedMatrix(normalizedMatrix,users,movies)
-    val simMatrix = simOpt(k,preProcessedMatrix,users)
+    val simMatrix = simOpt(k,preProcessedMatrix,users,movies)
     var r_u : Double = 0.0
     ((u,i) => {
     var r_i = kNNRating(u-1,i-1,normalizedMatrix,simMatrix,users,ratings)
@@ -261,16 +282,17 @@ package object predictions
     builder.result()
   }
 
-  def simPartition(k : Int, preProcessedMatrix : CSCMatrix[Double], list_user : Seq[Int], users : Int) : Seq[(Int,Seq[(Int,Double)])] = {
-      var simMat = preProcessedMatrix * preProcessedMatrix.t
-      list_user.map(u => (u,argtopk(simMat(u,0 to users-1).t,k+1).filter(_ != u).map(v=>(v,simMat(u,v)))))
+  def simPartition(k : Int, list_user : Set[Int], users : Int,movies : Int, br : org.apache.spark.broadcast.Broadcast[CSCMatrix[Double]]) : Seq[(Int,Seq[(Int,Double)])] = {
+      val partMat = createPartMat(list_user, br,users,movies)
+      var simMat = prodMat(partMat,users,movies)
+      (list_user.toSeq).map(u => (u,argtopk(simMat(u,0 to users-1).t,k+1).filter(_ != u).map(v=>(v,simMat(u,v)))))
   }
 
   def simApprox(preProcessedMatrix : CSCMatrix[Double], k: Int, sc : SparkContext, partitions : Seq[Set[Int]], users : Int, movies : Int): CSCMatrix[Double] = {
     val br = sc.broadcast(preProcessedMatrix)
-    val partitionRDD = sc.parallelize(partitions).flatMap(p=> simPartition(k, createPartMat(p, br,users,movies), p.toSeq, users)).reduceByKey{case (x,y) => x.union(y).distinct}
+    var partitionRDD = sc.parallelize(partitions).flatMap(p=> simPartition(k, p, users,movies,br)).reduceByKey{case (x,y) => x.union(y).distinct}.collect()
     val builder = new CSCMatrix.Builder[Double](rows = users, cols = users)
-    for (listu <- partitionRDD.collect()) {
+    for (listu <- partitionRDD) {
       for (listv <- listu._2.sortBy(x => x._2)(Ordering.Double.reverse).take(k)) {
         builder.add(listu._1, listv._1, listv._2)
       }

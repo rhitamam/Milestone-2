@@ -56,7 +56,7 @@ object Optimizing extends App {
     val avgMatrix = avgRatingUserMatrix(train,conf_users,conf_movies)
     val normalizedMatrix = normalizedDevMatrix(train,avgMatrix,conf_users,conf_movies)
     val preProcessedMatrix = processedMatrix(normalizedMatrix,conf_users,conf_movies)
-    val simOptimizing = simOpt(10,preProcessedMatrix,conf_users)
+    val simOptimizing = simOpt(10,preProcessedMatrix,conf_users,conf_movies)
     val pred = predictionKNN(10,train,conf_users,conf_movies)
 
     // Save answers as JSON

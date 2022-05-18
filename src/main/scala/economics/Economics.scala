@@ -39,13 +39,13 @@ object Economics {
             "ContainerDailyCost" -> ujson.Num((1.14*scala.math.exp(-6)+8*1.6*scala.math.exp(-7))*60*60*24),
             "4RPisDailyCostIdle" -> ujson.Num(0.25*0.003*24),
             "4RPisDailyCostComputing" -> ujson.Num(0.25*0.004*24),
-            "MinRentingDaysIdleRPiPower" -> ujson.Num(108.48/((1.14*scala.math.exp(-6)+8*1.6*scala.math.exp(-7))*60*60*24-0.25*0.003*24)),
-            "MinRentingDaysComputingRPiPower" -> ujson.Num(108.48/((1.14*scala.math.exp(-6)+8*1.6*scala.math.exp(-7))*60*60*24-0.25*0.004*24)) 
+            "MinRentingDaysIdleRPiPower" -> ujson.Num(round(108.48/((1.14*scala.math.exp(-6)+8*1.6*scala.math.exp(-7))*60*60*24-0.25*0.003*24))),
+            "MinRentingDaysComputingRPiPower" -> ujson.Num(round(108.48/((1.14*scala.math.exp(-6)+8*1.6*scala.math.exp(-7))*60*60*24-0.25*0.004*24))) 
           ),
           "E.3" -> ujson.Obj(
             "NbRPisEqBuyingICCM7" -> ujson.Num(floor(38600/108.48)),
-            "RatioRAMRPisVsICCM7" -> ujson.Num(floor(38600/108.48)*8/24*64),
-            "RatioComputeRPisVsICCM7" -> ujson.Num(floor(38600/108.48)*1.5/(2*14*2.6))
+            "RatioRAMRPisVsICCM7" -> ujson.Num(floor(38600/108.48)*8/(24*64)),
+            "RatioComputeRPisVsICCM7" -> ujson.Num(floor(38600/108.48)*16*1.5/(2*14*2.6))
           )
         )
 
