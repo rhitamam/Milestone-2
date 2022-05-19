@@ -122,17 +122,6 @@ package object predictions
     builder.result()
   }
 
-  // Computes the matrix product bewteen a matrix and its transpose element per element (less memory, but lower that using *)
-  def prodMat2(mat : CSCMatrix[Double], row : Int, col : Int) : CSCMatrix[Double] = {
-    val builder = new CSCMatrix.Builder[Double](rows=row, cols=row)
-    for (u <- 0 to row -1){
-      for (v <- 0 to row-1){ 
-        builder.add(u,v,mat(u,0 to col-1) * mat(v,0 to col-1).t)
-      }
-    }
-    builder.result()
-  }
-
   // Reduction of a matrix using a DenseVector
   def reduction(mat : CSCMatrix[Double],users : Int) : DenseVector[Double] = {
     var vect = DenseVector.zeros[Double](users)	
@@ -215,6 +204,7 @@ package object predictions
     val builder = new CSCMatrix.Builder[Double](rows=users, cols=users)
     for (u <- 0 to users-1) {
       for (v <- argtopk(simMat(u,0 to users-1).t,k+1)) {
+        // We take the k+1 top neighbours of u and delete u (similarity of u with u is maximum)
         if (u != v) builder.add(u, v, simMat(u,v))
       }
     }

@@ -33,7 +33,7 @@ class OptimizingTests extends AnyFunSuite with BeforeAndAfterAll {
      val avgMatrix = avgRatingUserMatrix(train2,943, 1682)
      val normalizedMatrix = normalizedDevMatrix(train2,avgMatrix,943, 1682)
      val preProcessedMatrix = processedMatrix(normalizedMatrix,943, 1682)
-     val simOptimizing = simOpt(10,preProcessedMatrix,943)
+     val simOptimizing = simOpt(10,preProcessedMatrix,943,1682)
      val pred = predictionKNN(10,train2,943, 1682)
 
      // Similarity between user 1 and itself
